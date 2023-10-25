@@ -18,29 +18,21 @@ fn checked_multiplication(a: u32, b: u32) -> Result<u32, Error> {
     return Ok(a * b);
 }
 
-fn use_functions() {
+fn use_functions() -> Result<bool, Error> {
     let a: u32 = 5;
     let b: u32 = 20;
     let c: u32 = 10;
     let d: u32 = std::u32::MAX - 1;
-    match checked_addition(a, b) {
-        Ok(s) => println!("{a} + {b} = {s}"),
-        Err(e) => println!("{a} + {b} overflows u32 ({:?})", e),
-    }
-    match checked_addition(a, d) {
-        Ok(s) => println!("{a} + {d} = {s}"),
-        Err(e) => println!("{a} + {d} overflows u32 ({:?})", e),
-    }
-    match checked_multiplication(a, c) {
-        Ok(p) => println!("{a} * {c} = {p}"),
-        Err(e) => println!("{a} * {c} overflows u32 ({:?})", e),
-    }
-    match checked_multiplication(a, d) {
-        Ok(p) => println!("{a} * {d} = {p}"),
-        Err(e) => println!("{a} * {d} overflows u32 ({:?})", e),
-    }
+    let sum_a_b = checked_addition(a, b)?;
+    let sum_a_d = checked_addition(a, c)?;
+    let prod_a_c = checked_multiplication(a, c)?;
+    let prod_a_d = checked_multiplication(a, d)?;
+    return Ok(sum_a_b == sum_a_d && prod_a_c == prod_a_d); // Don't really know what to write here.
 }
 
 fn main() {
-    use_functions();
+    match use_functions() {
+        Ok(b) => println!("Successfully executed (returned {b})."),
+        Err(e) => println!("An error occured ({:?})", e)
+    }
 }
