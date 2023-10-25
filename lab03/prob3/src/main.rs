@@ -33,6 +33,6 @@ fn use_functions() -> Result<bool, Error> {
 fn main() {
     match use_functions() {
         Ok(b) => println!("Successfully executed (returned {b})."),
-        Err(e) => println!("An error occured ({:?})", e)
+        Err(e) => println!("An error occured ({:?})", e),
     }
 }
