@@ -16,6 +16,7 @@ fn main() -> Result<(), io::Error> {
             if word == short_form as &str {
                 print!("{} ", long_form);
                 replaced = true;
+                break;
             }
         }
         if !replaced {
