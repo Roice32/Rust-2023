@@ -23,7 +23,6 @@ fn main() -> Result<()> {
 
     for line in input.lines() {
         let mut i: u8 = 0;
-
         let mut current_student: Student = Student {
             name: String::from(""),
             phone: String::from(""),
