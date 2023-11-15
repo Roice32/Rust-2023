@@ -1,0 +1,21 @@
+ping
+ping abc
+
+count
+TIMES
+count a b c
+count a
+sto
+help
+hlep
+count a             b
+   count a             b   
+
+times
+square 4
+times
+times abc
+help one too many arguments
+stop
+
+times a b b c
