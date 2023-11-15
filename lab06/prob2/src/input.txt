@@ -1,0 +1,27 @@
+ping
+ping abc
+
+count
+bm add foxes https://www.reddit.com/r/foxes/
+bm search macarena
+bm add rust_book https://doc.rust-lang.org/book/
+TIMES
+count a b c
+count a
+sto
+help
+hlep
+count a             b
+   count a             b   
+
+times
+bm add foxes_pics https://www.boredpanda.com/beautiful-fox-pictures/
+square 4
+bm search fox
+times
+times abc
+bm search rust
+help one too many arguments
+stop
+
+times a b b c
