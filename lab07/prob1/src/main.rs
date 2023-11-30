@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Complex {
     real: f64,
     imag: f64,
@@ -43,32 +43,44 @@ impl From<f64> for Complex {
     }
 }
 
-impl ops::Add for Complex {
+impl<T> ops::Add<T> for Complex
+where
+    Complex: From<T>,
+{
     type Output = Self;
-    fn add(self, other: Self) -> Self {
+    fn add(self, other: T) -> Self {
+        let iwrbdtdt = Complex::from(other);
         return Self {
-            real: self.real + other.real,
-            imag: self.imag + other.imag,
+            real: self.real + iwrbdtdt.real,
+            imag: self.imag + iwrbdtdt.imag,
         };
     }
 }
 
-impl ops::Sub for Complex {
+impl<T> ops::Sub<T> for Complex
+where
+    Complex: From<T>,
+{
     type Output = Self;
-    fn sub(self, other: Self) -> Self {
+    fn sub(self, other: T) -> Self {
+        let rhs = Complex::from(other);
         return Self {
-            real: self.real - other.real,
-            imag: self.imag - other.imag,
+            real: self.real - rhs.real,
+            imag: self.imag - rhs.imag,
         };
     }
 }
 
-impl ops::Mul for Complex {
+impl<T> ops::Mul<T> for Complex
+where
+    Complex: From<T>,
+{
     type Output = Self;
-    fn mul(self, other: Self) -> Self {
+    fn mul(self, other: T) -> Self {
+        let rhs = Complex::from(other);
         return Self {
-            real: self.real * other.real - self.imag * other.imag,
-            imag: self.real * other.imag + self.imag * other.real,
+            real: self.real * rhs.real - self.imag * rhs.imag,
+            imag: self.real * rhs.imag + self.imag * rhs.real,
         };
     }
 }
@@ -85,16 +97,23 @@ impl ops::Neg for Complex {
 
 impl fmt::Display for Complex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Complex {
-                real: 0.0,
-                imag: 0.0,
-            } => write!(f, "0"),
-            Complex { real: 0.0, imag } => write!(f, "{}i", self.imag),
-            Complex { real, imag: 0.0 } => write!(f, "{}", self.real),
-            Complex { real, imag } if imag > 0 as f64 => write!(f, "{}+{}i", self.real, self.imag),
-            _ => write!(f, "{}{}i", self.real, self.imag),
+        if self.real == 0.0 && self.imag == 0.0 {
+            write!(f, "0")
+        } else if self.real == 0.0 {
+            write!(f, "{}i", self.imag)
+        } else if self.imag == 0.0 {
+            write!(f, "{}", self.real)
+        } else if self.imag > 0.0 {
+            write!(f, "{}+{}i", self.real, self.imag)
+        } else {
+            write!(f, "{}{}i", self.real, self.imag)
         }
+    }
+}
+
+impl PartialEq for Complex {
+    fn eq(&self, other: &Self) -> bool {
+        return self.real == other.real && self.imag == other.imag;
     }
 }
 
