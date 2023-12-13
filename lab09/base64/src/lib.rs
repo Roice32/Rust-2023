@@ -1,3 +1,24 @@
+//! Crate used for encoding basic ASCII strings into base64
+
+/// Takes a byte sequence (the bytes of an `ASCII String`)
+/// and returns a base65-encoded `String`.
+///
+/// Should `input` not have enough (3n) bytes for proper byte grouping,
+/// the output will be padded by `=`.
+///
+/// Output always has 4n characters.
+///
+/// # Example
+/// ```
+/// let result = base64::encode("hello".as_bytes());
+/// assert_eq!(result,"aGVsbG8=");
+/// ````
+/// If input is not base-ASCII characters, behavior is undefined.
+/// # Example
+/// ```
+/// let result = base64::encode("🥐".as_bytes());
+/// assert_ne!(result.len(), 4);
+/// ````
 pub fn encode(input: &[u8]) -> String {
     let alphabet: String =
         String::from("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/");
@@ -54,5 +75,10 @@ mod tests {
     fn null_input() {
         let result = encode("".as_bytes());
         assert_eq!(result, "");
+    }
+    #[test]
+    fn not_ascii() {
+        let result = encode("🥐🥐🥐".as_bytes());
+        assert_ne!(result.len(), 4);
     }
 }
