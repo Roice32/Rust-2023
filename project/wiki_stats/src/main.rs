@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde_derive::Deserialize;
+use std::collections::HashMap;
 use std::{fs::File, io::Read};
 use zip::read::ZipArchive;
 
@@ -46,10 +47,45 @@ impl LongestItem {
     }
 }
 
+struct WordsFrequencyMap {
+    pairs: HashMap<String, u32>,
+}
+
+impl WordsFrequencyMap {
+    pub fn new() -> Self {
+        Self {
+            pairs: HashMap::new(),
+        }
+    }
+    pub fn map_words(normal: &mut Self, lowercase: &mut Self, s: &str) {
+        for word in
+            s.split(|c: char| -> bool { c.is_ascii_whitespace() || c.is_ascii_punctuation() })
+        {
+            normal
+                .pairs
+                .entry(word.clone().to_string())
+                .and_modify(|count| *count += 1)
+                .or_insert(1);
+            lowercase
+                .pairs
+                .entry(word.clone().to_ascii_lowercase().to_string())
+                .and_modify(|count| *count += 1)
+                .or_insert(1);
+        }
+    }
+    pub fn map_article(normal: &mut Self, lowercase: &mut Self, a: &Article) {
+        WordsFrequencyMap::map_words(normal, lowercase, &a.title);
+        WordsFrequencyMap::map_words(normal, lowercase, &a.text);
+    }
+}
+
 fn main() -> Result<()> {
     let dataset: &str = "dataset/test.zip";
     let file = File::open(dataset)?;
     let mut archive = ZipArchive::new(file)?;
+
+    let mut words_freq = WordsFrequencyMap::new();
+    let mut lowercase_words_freq = WordsFrequencyMap::new();
 
     let mut longest_article = LongestItem::new();
     let mut longest_title = LongestItem::new();
@@ -62,6 +98,7 @@ fn main() -> Result<()> {
             data_file.read_to_string(&mut data)?;
             let articles_vec: Vec<Article> = serde_json::from_str(&data)?;
             for art in articles_vec {
+                WordsFrequencyMap::map_article(&mut words_freq, &mut lowercase_words_freq, &art);
                 if art.text.len() > longest_article.size {
                     longest_article = LongestItem::new_longest_article(&art, data_file.name());
                 }
@@ -71,6 +108,26 @@ fn main() -> Result<()> {
             }
         }
     }
+
+    // Only for debugging. Non-final.
+    let mut count = 0;
+    for (key, value) in &words_freq.pairs {
+        print!("({},{})", key, value);
+        count += 1;
+        if count == 9 {
+            break;
+        }
+    }
+    println!();
+    count = 0;
+    for (key, value) in &lowercase_words_freq.pairs {
+        print!("({},{})", key, value);
+        count += 1;
+        if count == 9 {
+            break;
+        }
+    } //
+    println!();
 
     println!(
         "Longest article: Title: {} | Path: {} | Size: {} bytes.",
