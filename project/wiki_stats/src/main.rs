@@ -1,20 +1,29 @@
 use anyhow::Result;
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::{fs::File, io::Read};
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Write};
 use zip::read::ZipArchive;
 
 #[derive(Debug, Deserialize)]
-struct Article {
+pub struct Article {
     id: String,
     text: String,
     title: String,
 }
 
-struct LongestItem {
+#[derive(Serialize)]
+pub struct LongestItem {
     title: String,
     path: String,
     size: usize,
+}
+
+impl Default for LongestItem {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LongestItem {
@@ -47,7 +56,7 @@ impl LongestItem {
     }
 }
 
-struct WordsFrequencyMap {
+pub struct WordsFrequencyMap {
     pairs: HashMap<String, u32>,
 }
 
@@ -79,9 +88,75 @@ impl WordsFrequencyMap {
     }
 }
 
+impl Default for WordsFrequencyMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Serialize)]
+pub struct WordFreq {
+    word: String,
+    appearances: u32,
+}
+
+pub fn write_stats_to_file(
+    w_f: WordsFrequencyMap,
+    l_w_f: WordsFrequencyMap,
+    l_a: LongestItem,
+    l_t: LongestItem,
+) -> Result<()> {
+    let stats_file_path = "dataset/stats.txt";
+    // Needs proper variable handling
+    if let Err(_e) = fs::remove_file(stats_file_path) {}
+    let stats_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(stats_file_path)?;
+    let stats_file_writer = RefCell::new(stats_file);
+
+    let mut pairs_vec: Vec<WordFreq> = w_f
+        .pairs
+        .into_iter()
+        .map(|(key, value)| WordFreq {
+            word: key,
+            appearances: value,
+        })
+        .collect();
+    stats_file_writer
+        .borrow_mut()
+        .write_all("\tWords frequency (as written)\n".as_bytes())?;
+    serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &pairs_vec)?;
+
+    pairs_vec = l_w_f
+        .pairs
+        .into_iter()
+        .map(|(key, value)| WordFreq {
+            word: key,
+            appearances: value,
+        })
+        .collect();
+    stats_file_writer
+        .borrow_mut()
+        .write_all("\tWords frequency (lowercase)\n".as_bytes())?;
+    serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &pairs_vec)?;
+
+    stats_file_writer
+        .borrow_mut()
+        .write_all("\tLongest article\n".as_bytes())?;
+    serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &l_a)?;
+
+    stats_file_writer
+        .borrow_mut()
+        .write_all("\tLongest title\n".as_bytes())?;
+    serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &l_t)?;
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let dataset: &str = "dataset/test.zip";
-    let file = File::open(dataset)?;
+    let file = fs::File::open(dataset)?;
     let mut archive = ZipArchive::new(file)?;
 
     let mut words_freq = WordsFrequencyMap::new();
@@ -109,34 +184,12 @@ fn main() -> Result<()> {
         }
     }
 
-    // Only for debugging. Non-final.
-    let mut count = 0;
-    for (key, value) in &words_freq.pairs {
-        print!("({},{})", key, value);
-        count += 1;
-        if count == 9 {
-            break;
-        }
-    }
-    println!();
-    count = 0;
-    for (key, value) in &lowercase_words_freq.pairs {
-        print!("({},{})", key, value);
-        count += 1;
-        if count == 9 {
-            break;
-        }
-    } //
-    println!();
-
-    println!(
-        "Longest article: Title: {} | Path: {} | Size: {} bytes.",
-        longest_article.title, longest_article.path, longest_article.size
-    );
-    println!(
-        "Longest title: Title: {} | Path: {} | Size: {} bytes.",
-        longest_title.title, longest_title.path, longest_title.size
-    );
+    write_stats_to_file(
+        words_freq,
+        lowercase_words_freq,
+        longest_article,
+        longest_title,
+    )?;
 
     Ok(())
 }
