@@ -138,24 +138,24 @@ pub fn write_stats_to_file(
         .collect();
     stats_file_writer
         .borrow_mut()
-        .write_all("\tWords frequency (lowercase)\n".as_bytes())?;
+        .write_all("\n\tWords frequency (lowercase)\n".as_bytes())?;
     serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &pairs_vec)?;
 
     stats_file_writer
         .borrow_mut()
-        .write_all("\tLongest article\n".as_bytes())?;
+        .write_all("\n\tLongest article\n".as_bytes())?;
     serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &l_a)?;
 
     stats_file_writer
         .borrow_mut()
-        .write_all("\tLongest title\n".as_bytes())?;
+        .write_all("\n\tLongest title\n".as_bytes())?;
     serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &l_t)?;
 
     Ok(())
 }
 
 fn main() -> Result<()> {
-    let dataset: &str = "dataset/test.zip";
+    let dataset: &str = "dataset/test_dataset.zip";
     let file = fs::File::open(dataset)?;
     let mut archive = ZipArchive::new(file)?;
 
