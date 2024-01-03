@@ -1,12 +1,12 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_derive::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use zip::read::ZipArchive;
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct Article {
     id: String,
     text: String,
@@ -67,9 +67,9 @@ impl WordsFrequencyMap {
         }
     }
     pub fn map_words(normal: &mut Self, lowercase: &mut Self, s: &str) {
-        for word in
-            s.split(|c: char| -> bool { c.is_ascii_whitespace() || c.is_ascii_punctuation() })
-        {
+        for word in s.split(|c: char| -> bool {
+            c.is_ascii_whitespace() || (c != '\'' && c.is_ascii_punctuation())
+        }) {
             normal
                 .pairs
                 .entry(word.clone().to_string())
@@ -107,12 +107,21 @@ pub fn write_stats_to_file(
     l_t: LongestItem,
 ) -> Result<()> {
     let stats_file_path = "dataset/stats.txt";
-    // Needs proper variable handling
-    if let Err(_e) = fs::remove_file(stats_file_path) {}
+    match fs::remove_file(stats_file_path) {
+        Ok(()) => {}
+        Err(e) => match e.kind() {
+            ErrorKind::NotFound => {}
+            _ => {
+                return Err(e.into());
+            }
+        },
+    }
+
     let stats_file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(stats_file_path)?;
+        .open(stats_file_path)
+        .context("Failed to create output file")?;
     let stats_file_writer = RefCell::new(stats_file);
 
     let mut pairs_vec: Vec<WordFreq> = w_f
