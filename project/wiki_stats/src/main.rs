@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
+use clap::Parser;
 use serde_derive::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 use std::thread;
+use std::time::Instant;
 use zip::read::ZipArchive;
 
 #[derive(Deserialize)]
@@ -101,8 +103,7 @@ pub struct WordFreq {
     appearances: u32,
 }
 
-pub fn write_stats_to_file(stats: StatsPackage) -> Result<()> {
-    let stats_file_path = "dataset/stats.txt";
+pub fn write_stats_to_file(stats: StatsPackage, stats_file_path: &str) -> Result<()> {
     match fs::remove_file(stats_file_path) {
         Ok(()) => {}
         Err(e) => match e.kind() {
@@ -223,18 +224,57 @@ pub fn process_file(data: String, path: String) -> Result<StatsPackage> {
     Ok(stats)
 }
 
+pub fn info_print() {
+    println!("\tName: {}", env!("CARGO_PKG_NAME"));
+    println!("\tVersion: {}", env!("CARGO_PKG_VERSION"));
+    println!("\tDescription: Tool for analyzing article datasets stored as .JSON files within a .zip archive.
+              \nUses multithreaded techniques to iterate through each file, calculating each word's number of appearences (as-written & lowercased), as well as info about the longest article & title.");
+    println!("\tAvailable command-line arguments:");
+    println!("1. --aide -a: Displays this info about the program. French for \"help\" 'cause \"help\" gets into conflict with cargo's own \"--help\"...");
+    println!("2. --input -i [source_file.zip]: Specifies the file containing the dataset to be analyzed. Must be a .zip archive. Default: \'dataset\\dataset.zip\'.");
+    println!("3. --output -o [output_file.txt]: Specifies the file where computed stats will be written. Must be a .txt file. Default: \'stats.txt\'.");
+    println!("4. --metrics -m: At the end of the execution displays: how long the actual file processing took, number of files processed, and the dataset's (compressed) size.")
+}
+
+#[derive(Parser)]
+#[command(version, about = "Parsing needed arguments")]
+struct Arguments {
+    #[arg(long, short)]
+    input: Option<String>,
+
+    #[arg(long, short)]
+    output: Option<String>,
+
+    #[arg(long, short)]
+    aide: bool,
+
+    #[arg(long, short)]
+    metrics: bool,
+}
+
 fn main() -> Result<()> {
-    let dataset: &str = "dataset/test_dataset.zip";
+    let args = Arguments::parse();
+    if args.aide {
+        info_print();
+        return Ok(());
+    }
+
+    let dataset: &str = match &args.input {
+        Some(s) if s.ends_with(".zip") => s,
+        _ => "dataset/dataset.zip",
+    };
+
     let file = fs::File::open(dataset)?;
     let mut archive = ZipArchive::new(file)?;
 
     let mut workers_handles: Vec<thread::JoinHandle<Result<StatsPackage, anyhow::Error>>> =
         Vec::new();
 
-    let filename_prefix: &str = "folder/"; // maybe unneeded?
+    let start_time = Instant::now();
+
     for index in 0..archive.len() {
         let mut data_file = archive.by_index(index)?;
-        if data_file.name().starts_with(filename_prefix) && data_file.name().ends_with(".json") {
+        if data_file.name().ends_with(".json") {
             let mut data = String::new();
             data_file.read_to_string(&mut data)?;
             let file_name = data_file.name().to_string();
@@ -243,6 +283,7 @@ fn main() -> Result<()> {
         }
     }
 
+    let no_files = workers_handles.len();
     let mut complete_stats = StatsPackage::new();
     for worker in workers_handles {
         match worker.join() {
@@ -263,7 +304,24 @@ fn main() -> Result<()> {
         };
     }
 
-    match write_stats_to_file(complete_stats) {
+    if args.metrics {
+        let time_passed = start_time.elapsed();
+        let file_metadata = fs::metadata(dataset)?;
+        println!(
+            "It took ~{}s {}ms to process all {} files (~{} bytes compressed size).",
+            time_passed.as_secs(),
+            time_passed.subsec_millis(),
+            no_files,
+            file_metadata.len()
+        );
+    }
+
+    let output: &str = match &args.output {
+        Some(s) if s.ends_with(".txt") => s,
+        _ => "stats.txt",
+    };
+
+    match write_stats_to_file(complete_stats, output) {
         Ok(()) => {
             println!("Successfully written stats to output file.")
         }
