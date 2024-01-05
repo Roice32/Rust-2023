@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
+use std::thread;
 use zip::read::ZipArchive;
 
 #[derive(Deserialize)]
@@ -100,12 +101,7 @@ pub struct WordFreq {
     appearances: u32,
 }
 
-pub fn write_stats_to_file(
-    w_f: WordsFrequencyMap,
-    l_w_f: WordsFrequencyMap,
-    l_a: LongestItem,
-    l_t: LongestItem,
-) -> Result<()> {
+pub fn write_stats_to_file(stats: StatsPackage) -> Result<()> {
     let stats_file_path = "dataset/stats.txt";
     match fs::remove_file(stats_file_path) {
         Ok(()) => {}
@@ -124,7 +120,8 @@ pub fn write_stats_to_file(
         .context("Failed to create output file")?;
     let stats_file_writer = RefCell::new(stats_file);
 
-    let mut pairs_vec: Vec<WordFreq> = w_f
+    let mut pairs_vec: Vec<WordFreq> = stats
+        .words_freq
         .pairs
         .into_iter()
         .map(|(key, value)| WordFreq {
@@ -137,7 +134,8 @@ pub fn write_stats_to_file(
         .write_all("\tWords frequency (as written)\n".as_bytes())?;
     serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &pairs_vec)?;
 
-    pairs_vec = l_w_f
+    pairs_vec = stats
+        .low_words_freq
         .pairs
         .into_iter()
         .map(|(key, value)| WordFreq {
@@ -153,14 +151,76 @@ pub fn write_stats_to_file(
     stats_file_writer
         .borrow_mut()
         .write_all("\n\tLongest article\n".as_bytes())?;
-    serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &l_a)?;
+    serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &stats.long_art)?;
 
     stats_file_writer
         .borrow_mut()
         .write_all("\n\tLongest title\n".as_bytes())?;
-    serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &l_t)?;
+    serde_json::to_writer_pretty(&mut *stats_file_writer.borrow_mut(), &stats.long_title)?;
 
     Ok(())
+}
+
+pub struct StatsPackage {
+    words_freq: WordsFrequencyMap,
+    low_words_freq: WordsFrequencyMap,
+    long_art: LongestItem,
+    long_title: LongestItem,
+}
+
+impl Default for StatsPackage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StatsPackage {
+    pub fn new() -> Self {
+        Self {
+            words_freq: WordsFrequencyMap::new(),
+            low_words_freq: WordsFrequencyMap::new(),
+            long_art: LongestItem::new(),
+            long_title: LongestItem::new(),
+        }
+    }
+
+    pub fn merge_with(&mut self, other: Self) {
+        for (key, value) in other.words_freq.pairs {
+            self.words_freq
+                .pairs
+                .entry(key)
+                .and_modify(|count| *count += value)
+                .or_insert(value);
+        }
+        for (key, value) in other.low_words_freq.pairs {
+            self.low_words_freq
+                .pairs
+                .entry(key)
+                .and_modify(|count| *count += value)
+                .or_insert(value);
+        }
+        if other.long_art.size > self.long_art.size {
+            self.long_art = other.long_art;
+        }
+        if other.long_title.size > self.long_title.size {
+            self.long_title = other.long_title;
+        }
+    }
+}
+
+pub fn process_file(data: String, path: String) -> Result<StatsPackage> {
+    let mut stats = StatsPackage::new();
+    let articles_vec: Vec<Article> = serde_json::from_str(&data)?;
+    for art in articles_vec {
+        WordsFrequencyMap::map_article(&mut stats.words_freq, &mut stats.low_words_freq, &art);
+        if art.text.len() > stats.long_art.size {
+            stats.long_art = LongestItem::new_longest_article(&art, &path);
+        }
+        if art.title.len() > stats.long_title.size {
+            stats.long_title = LongestItem::new_longest_title(&art, &path);
+        }
+    }
+    Ok(stats)
 }
 
 fn main() -> Result<()> {
@@ -168,37 +228,49 @@ fn main() -> Result<()> {
     let file = fs::File::open(dataset)?;
     let mut archive = ZipArchive::new(file)?;
 
-    let mut words_freq = WordsFrequencyMap::new();
-    let mut lowercase_words_freq = WordsFrequencyMap::new();
+    let mut workers_handles: Vec<thread::JoinHandle<Result<StatsPackage, anyhow::Error>>> =
+        Vec::new();
 
-    let mut longest_article = LongestItem::new();
-    let mut longest_title = LongestItem::new();
-
-    let filename_prefix: &str = "folder/";
+    let filename_prefix: &str = "folder/"; // maybe unneeded?
     for index in 0..archive.len() {
         let mut data_file = archive.by_index(index)?;
         if data_file.name().starts_with(filename_prefix) && data_file.name().ends_with(".json") {
             let mut data = String::new();
             data_file.read_to_string(&mut data)?;
-            let articles_vec: Vec<Article> = serde_json::from_str(&data)?;
-            for art in articles_vec {
-                WordsFrequencyMap::map_article(&mut words_freq, &mut lowercase_words_freq, &art);
-                if art.text.len() > longest_article.size {
-                    longest_article = LongestItem::new_longest_article(&art, data_file.name());
-                }
-                if art.title.len() > longest_title.size {
-                    longest_title = LongestItem::new_longest_title(&art, data_file.name());
-                }
-            }
+            let file_name = data_file.name().to_string();
+            let handle = thread::spawn(|| process_file(data, file_name));
+            workers_handles.push(handle);
         }
     }
 
-    write_stats_to_file(
-        words_freq,
-        lowercase_words_freq,
-        longest_article,
-        longest_title,
-    )?;
+    let mut complete_stats = StatsPackage::new();
+    for worker in workers_handles {
+        match worker.join() {
+            Ok(worker_stats) => match worker_stats {
+                Ok(w_s) => complete_stats.merge_with(w_s),
+                Err(e) => {
+                    println!("Worker thread couldn't process data about a file: {:?}", e);
+                    std::process::exit(1);
+                }
+            },
+            Err(e) => {
+                println!(
+                    "There was an error receiving data from a worker thread: {:?}",
+                    e
+                );
+                std::process::exit(1);
+            }
+        };
+    }
+
+    match write_stats_to_file(complete_stats) {
+        Ok(()) => {
+            println!("Successfully written stats to output file.")
+        }
+        Err(e) => {
+            println!("An error occured while writing output: {:?}", e);
+        }
+    }
 
     Ok(())
 }
