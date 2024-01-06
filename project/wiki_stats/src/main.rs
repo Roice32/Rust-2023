@@ -228,12 +228,16 @@ pub fn info_print() {
     println!("\tName: {}", env!("CARGO_PKG_NAME"));
     println!("\tVersion: {}", env!("CARGO_PKG_VERSION"));
     println!("\tDescription: Tool for analyzing article datasets stored as .JSON files within a .zip archive.
-              \nUses multithreaded techniques to iterate through each file, calculating each word's number of appearences (as-written & lowercased), as well as info about the longest article & title.");
+              \nUses multithreaded techniques to iterate through each file, calculating each word's number of appearences (as-written & lowercased), as well as info about the longest article & title.
+              \nMaximum number of parallel threads running = number of virtual threads on the CPU (in your case: {}).", num_cpus::get());
     println!("\tAvailable command-line arguments:");
     println!("1. --aide -a: Displays this info about the program. French for \"help\" 'cause \"help\" gets into conflict with cargo's own \"--help\"...");
-    println!("2. --input -i [source_file.zip]: Specifies the file containing the dataset to be analyzed. Must be a .zip archive. Default: \'dataset\\dataset.zip\'.");
+    println!("2. --input -i [source_file.zip]: Specifies the file containing the dataset to be analyzed. Must be a .zip archive. Default: \'datasets\\dataset.zip\'.");
     println!("3. --output -o [output_file.txt]: Specifies the file where computed stats will be written. Must be a .txt file. Default: \'stats.txt\'.");
-    println!("4. --metrics -m: At the end of the execution displays: how long the actual file processing took, number of files processed, and the dataset's (compressed) size.")
+    println!("4. --metrics -m: During execution will print:
+              \n\t> partial progress: files processed / total files* + precentage (*all files counted, even if not .JSON)
+              \n\t> total time elapsed during file processing: secs & milisecs, #files processed, their total compressed size
+              \n\t> total time elapsed during output writing: secs & milisecs")
 }
 
 #[derive(Parser)]
@@ -261,47 +265,58 @@ fn main() -> Result<()> {
 
     let dataset: &str = match &args.input {
         Some(s) if s.ends_with(".zip") => s,
-        _ => "dataset/dataset.zip",
+        _ => "datasets/dataset.zip",
     };
 
     let file = fs::File::open(dataset)?;
     let mut archive = ZipArchive::new(file)?;
 
-    let mut workers_handles: Vec<thread::JoinHandle<Result<StatsPackage, anyhow::Error>>> =
-        Vec::new();
+    let mut workers_handles = vec![];
+    let mut workers_slice = vec![];
 
-    let start_time = Instant::now();
+    let mut complete_stats = StatsPackage::new();
+    let no_files = archive.len();
 
-    for index in 0..archive.len() {
+    let mut start_time = Instant::now();
+    for index in 0..no_files {
         let mut data_file = archive.by_index(index)?;
         if data_file.name().ends_with(".json") {
             let mut data = String::new();
             data_file.read_to_string(&mut data)?;
             let file_name = data_file.name().to_string();
-            let handle = thread::spawn(|| process_file(data, file_name));
-            workers_handles.push(handle);
+            let thread_handle = thread::spawn(|| process_file(data, file_name));
+            workers_handles.push(thread_handle);
         }
-    }
-
-    let no_files = workers_handles.len();
-    let mut complete_stats = StatsPackage::new();
-    for worker in workers_handles {
-        match worker.join() {
-            Ok(worker_stats) => match worker_stats {
-                Ok(w_s) => complete_stats.merge_with(w_s),
-                Err(e) => {
-                    println!("Worker thread couldn't process data about a file: {:?}", e);
-                    std::process::exit(1);
-                }
-            },
-            Err(e) => {
-                println!(
-                    "There was an error receiving data from a worker thread: {:?}",
-                    e
-                );
-                std::process::exit(1);
+        if workers_handles.len() == num_cpus::get() || index == no_files - 1 {
+            workers_slice.append(&mut workers_handles);
+            for worker in workers_slice.drain(..) {
+                match worker.join() {
+                    Ok(worker_stats) => match worker_stats {
+                        Ok(w_s) => complete_stats.merge_with(w_s),
+                        Err(e) => {
+                            println!("Worker thread couldn't process data about a file: {:?}", e);
+                            std::process::exit(1);
+                        }
+                    },
+                    Err(e) => {
+                        println!(
+                            "There was an error receiving data from a worker thread: {:?}",
+                            e
+                        );
+                        std::process::exit(1);
+                    }
+                };
             }
-        };
+            workers_handles.clear();
+            if args.metrics {
+                println!(
+                    "Processed {}/{} files ({:.2}% done).",
+                    index + 1,
+                    no_files,
+                    (index + 1) as f32 / no_files as f32 * 100.0
+                )
+            }
+        }
     }
 
     if args.metrics {
@@ -311,9 +326,10 @@ fn main() -> Result<()> {
             "It took ~{}s {}ms to process all {} files (~{} bytes compressed size).",
             time_passed.as_secs(),
             time_passed.subsec_millis(),
-            no_files,
+            archive.len(),
             file_metadata.len()
         );
+        println!("Now printing to output file.");
     }
 
     let output: &str = match &args.output {
@@ -321,6 +337,9 @@ fn main() -> Result<()> {
         _ => "stats.txt",
     };
 
+    if args.metrics {
+        start_time = Instant::now();
+    }
     match write_stats_to_file(complete_stats, output) {
         Ok(()) => {
             println!("Successfully written stats to output file.")
@@ -329,6 +348,14 @@ fn main() -> Result<()> {
             println!("An error occured while writing output: {:?}", e);
         }
     }
-
+    if args.metrics {
+        let time_passed = start_time.elapsed();
+        println!(
+            "It took ~{}s {}ms to print all stats to output file.",
+            time_passed.as_secs(),
+            time_passed.subsec_millis()
+        );
+    }
+    println!("Ok bye.");
     Ok(())
 }
