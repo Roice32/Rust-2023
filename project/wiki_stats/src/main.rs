@@ -69,10 +69,12 @@ impl WordsFrequencyMap {
             pairs: HashMap::new(),
         }
     }
+
     pub fn map_words(normal: &mut Self, lowercase: &mut Self, s: &str) {
-        for word in s.split(|c: char| -> bool {
-            c.is_ascii_whitespace() || (c != '\'' && c.is_ascii_punctuation())
-        }) {
+        for word in s.split(|c: char| -> bool { !c.is_alphanumeric() && c != '\'' }) {
+            if word.is_empty() {
+                continue;
+            }
             normal
                 .pairs
                 .entry(word.clone().to_string())
