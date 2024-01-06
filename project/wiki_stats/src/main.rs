@@ -162,6 +162,50 @@ pub fn write_stats_to_file(stats: StatsPackage, stats_file_path: &str) -> Result
     Ok(())
 }
 
+pub fn write_stats_to_file_plain(stats: StatsPackage, stats_file_path: &str) -> Result<()> {
+    match fs::remove_file(stats_file_path) {
+        Ok(()) => {}
+        Err(e) => match e.kind() {
+            ErrorKind::NotFound => {}
+            _ => {
+                return Err(e.into());
+            }
+        },
+    }
+
+    let mut stats_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(stats_file_path)
+        .context("Failed to create output file")?;
+
+    writeln!(stats_file, "\tWords frequency (as written)\n")?;
+    for (word, count) in stats.words_freq.pairs {
+        writeln!(stats_file, "{}: {}", word, count)?;
+    }
+
+    writeln!(stats_file, "\tWords frequency (lowercase)\n")?;
+    for (word, count) in stats.low_words_freq.pairs {
+        writeln!(stats_file, "{}: {}", word, count)?;
+    }
+
+    writeln!(stats_file, "\tLongest article\n")?;
+    writeln!(
+        stats_file,
+        "Title: {}\nPath: {}\nSize: {}",
+        stats.long_art.title, stats.long_art.path, stats.long_art.size
+    )?;
+
+    writeln!(stats_file, "\tLongest title\n")?;
+    writeln!(
+        stats_file,
+        "Title: {}\nPath: {}\nSize: {}",
+        stats.long_title.title, stats.long_title.path, stats.long_title.size
+    )?;
+
+    Ok(())
+}
+
 pub struct StatsPackage {
     words_freq: WordsFrequencyMap,
     low_words_freq: WordsFrequencyMap,
@@ -237,7 +281,8 @@ pub fn info_print() {
     println!("4. --metrics -m: During execution will print:
               \n\t> partial progress: files processed / total files* + precentage (*all files counted, even if not .JSON)
               \n\t> total time elapsed during file processing: secs & milisecs, #files processed, their total compressed size
-              \n\t> total time elapsed during output writing: secs & milisecs")
+              \n\t> total time elapsed during output writing: secs & milisecs");
+    println!("5. --plain -p: Computed stats will be written to file as plain text tuples, not formatted as JSONs (faster write time).")
 }
 
 #[derive(Parser)]
@@ -254,6 +299,9 @@ struct Arguments {
 
     #[arg(long, short)]
     metrics: bool,
+
+    #[arg(long, short)]
+    plain: bool,
 }
 
 fn main() -> Result<()> {
@@ -340,14 +388,27 @@ fn main() -> Result<()> {
     if args.metrics {
         start_time = Instant::now();
     }
-    match write_stats_to_file(complete_stats, output) {
-        Ok(()) => {
-            println!("Successfully written stats to output file.")
+
+    if args.plain {
+        match write_stats_to_file_plain(complete_stats, output) {
+            Ok(()) => {
+                println!("Successfully written stats to output file.")
+            }
+            Err(e) => {
+                println!("An error occured while writing output: {:?}", e);
+            }
         }
-        Err(e) => {
-            println!("An error occured while writing output: {:?}", e);
+    } else {
+        match write_stats_to_file(complete_stats, output) {
+            Ok(()) => {
+                println!("Successfully written stats to output file.")
+            }
+            Err(e) => {
+                println!("An error occured while writing output: {:?}", e);
+            }
         }
     }
+
     if args.metrics {
         let time_passed = start_time.elapsed();
         println!(
