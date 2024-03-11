@@ -23,4 +23,4 @@ Maximum number of parallel threads running = number of virtual threads on the CP
 5. --plain -p: Computed stats will be written to file as plain text tuples, not formatted as JSONs (faster write time).
 
 ### Example run:
-![Post-Execution](/project/wiki_stats/datasets/run2.png)
+![Post-Execution](/project/wiki_stats/run2.png)
