@@ -21,3 +21,6 @@ Maximum number of parallel threads running = number of virtual threads on the CP
   - total time elapsed during file processing: secs & milisecs, #files processed, their total compressed size
   - total time elapsed during output writing: secs & milisecs;
 5. --plain -p: Computed stats will be written to file as plain text tuples, not formatted as JSONs (faster write time).
+
+### Example run:
+![Post-Execution](/project/wiki_stats/datasets/run2.png)
